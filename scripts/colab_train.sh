@@ -88,7 +88,10 @@ print("EXIT=" + open("/content/run.exit").read().strip() if os.path.exists("/con
 EXIT_CODE=""
 while [[ -z "$EXIT_CODE" ]]; do
   sleep "$POLL"
-  if ! status=$(printf '%s\n' "$STATUS_PY" | remote 2>&1); then
+  # Hard time limit: a single hung `colab exec` once froze this loop for 50 minutes while the
+  # finished VM sat idle and billing. A timed-out check is simply retried on the next poll.
+  if ! status=$(printf '%s\n' "$STATUS_PY" \
+      | timeout 120 colab exec -s "$SESSION" --timeout 60 2>&1); then
     log "status check failed (will retry): ${status: -200}"
     continue
   fi
