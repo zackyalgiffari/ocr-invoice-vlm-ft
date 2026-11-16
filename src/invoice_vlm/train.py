@@ -187,6 +187,9 @@ def main() -> None:
         data_collator=SFTCollator(processor, cfg["max_pixels"], cfg.get("min_pixels", 0)),
     )
     trainer.train()
+    peak_gb = torch.cuda.max_memory_allocated() / 2**30
+    total_gb = torch.cuda.get_device_properties(0).total_memory / 2**30
+    print(f"[train] peak GPU memory allocated: {peak_gb:.1f} / {total_gb:.1f} GiB", flush=True)
 
     trainer.save_model(args.output_dir)  # LoRA adapter only
     processor.save_pretrained(args.output_dir)

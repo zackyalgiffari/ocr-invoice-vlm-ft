@@ -1,0 +1,34 @@
+# Same recipe as qwen35_2b_lora.yaml, sized for a Colab A100 40 GB: batch 2 x accum 4 keeps the
+# effective batch at 8 (comparable results) while using more of the GPU per step.
+
+model_id: Qwen/Qwen3.5-2B
+sources: [cord, invoices]
+
+# Images are downscaled (aspect kept) so width*height <= max_pixels before the processor.
+# Qwen3.5 emits one visual token per 32x32 px, so 1280*1280 px ~= 1600 image tokens.
+max_pixels: 1638400
+min_pixels: 65536
+
+lora:
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  # Every nn.Linear inside the language model (vision tower stays frozen), resolved at runtime.
+
+train:
+  epochs: 3
+  learning_rate: 1.0e-4
+  per_device_batch_size: 2
+  grad_accum: 4
+  warmup_fraction: 0.03
+  weight_decay: 0.0
+  logging_steps: 5
+  seed: 42
+
+hub:
+  model_id: zackyalgiffari/qwen3.5-2b-invoice-extract
+  private: true
+
+eval:
+  max_new_tokens: 1536
+  batch_size: 8

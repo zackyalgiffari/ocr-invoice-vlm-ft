@@ -45,6 +45,9 @@ colab usage </dev/null >"$OUT/usage-before.txt" 2>&1 || true
 trap cleanup EXIT # set before `new`, so a half-created session is also released
 log "creating session $SESSION on $GPU (run $RUN_ID)"
 colab new -s "$SESSION" --gpu "$GPU" </dev/null
+# The CU/hour rate is only visible while the VM is assigned, so record it now.
+colab usage </dev/null >"$OUT/usage-during.txt" 2>&1 || true
+log "$(grep -i 'rate' "$OUT/usage-during.txt" || echo 'usage rate unknown') on $GPU"
 
 colab upload -s "$SESSION" dist/src.tar.gz /content/src.tar.gz </dev/null
 # Uploaded as a file and read via HF_TOKEN_PATH, so the token never appears in
