@@ -7,7 +7,7 @@
 #   scripts/colab_train.sh demo       # infer.py with the adapter from the Hub on one receipt + one invoice
 #
 # Env: GPU (default L4), CONFIG, POLL (seconds between status checks, default 60),
-#      MAX_HOURS (default 4).
+#      MAX_HOURS (default 4), FAST_KERNELS (1 = install flash-linear-attention + causal-conv1d).
 # The VM runs the committed HEAD (git archive), so commit before running.
 set -euo pipefail
 
@@ -18,6 +18,7 @@ CONFIG=${CONFIG:-configs/qwen35_2b_lora.yaml}
 POLL=${POLL:-60}
 MAX_HOURS=${MAX_HOURS:-4} # hard wall-clock cap for the remote job; the VM is stopped after it
 NEW_RETRIES=${NEW_RETRIES:-5} # attempts to get a GPU when Colab has none free (503)
+FAST_KERNELS=${FAST_KERNELS:-0}
 
 cd "$(git rev-parse --show-toplevel)"
 if [[ -n "$(git status --porcelain)" ]]; then
@@ -79,7 +80,7 @@ log "launching $MODE job (setup + run) in the background on the VM"
 launch=$(remote <<PY 2>&1
 import os, subprocess
 env = dict(os.environ, HF_TOKEN_PATH="/content/.hf_token", PYTHONUNBUFFERED="1",
-           TOKENIZERS_PARALLELISM="false")
+           TOKENIZERS_PARALLELISM="false", FAST_KERNELS="$FAST_KERNELS")
 cmd = ("mkdir -p /content/app && tar -xzf /content/src.tar.gz -C /content/app"
        " && chmod 600 /content/.hf_token && cd /content/app"
        " && bash scripts/remote_job.sh $MODE /content/run $CONFIG > /content/run.log 2>&1;"

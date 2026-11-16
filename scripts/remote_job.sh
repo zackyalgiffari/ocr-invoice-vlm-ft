@@ -14,6 +14,16 @@ pip install -q -r requirements-colab.txt
 # importable. Nothing here quantizes, so remove it rather than chase a torch-matched build.
 pip uninstall -y -q torchao
 pip install -q --no-deps -e .
+if [[ "${FAST_KERNELS:-0}" == 1 ]]; then
+  # Qwen3.5's linear-attention layers otherwise fall back to slow reference PyTorch code.
+  # No [cuda] extra, so pip leaves Colab's torch alone. causal-conv1d has no wheel for this
+  # torch/python, so it compiles; a failed or slow build only costs that one kernel.
+  pip install -q flash-linear-attention
+  timeout 1200 pip install -q --no-build-isolation causal-conv1d \
+    || echo "[setup] causal-conv1d build failed or timed out; continuing without it"
+  python -c 'import fla; print("[setup] fla", fla.__version__)'
+  python -c 'import causal_conv1d; print("[setup] causal_conv1d", causal_conv1d.__version__)' || true
+fi
 echo "[setup] done"
 
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
