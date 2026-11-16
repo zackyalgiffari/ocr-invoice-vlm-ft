@@ -16,6 +16,7 @@ GPU=${GPU:-L4}
 CONFIG=${CONFIG:-configs/qwen35_2b_lora.yaml}
 POLL=${POLL:-60}
 MAX_HOURS=${MAX_HOURS:-4} # hard wall-clock cap for the remote job; the VM is stopped after it
+NEW_RETRIES=${NEW_RETRIES:-5} # attempts to get a GPU when Colab has none free (503)
 
 cd "$(git rev-parse --show-toplevel)"
 if [[ -n "$(git status --porcelain)" ]]; then
@@ -53,7 +54,14 @@ cleanup() {
 timeout 60 colab usage </dev/null >"$OUT/usage-before.txt" 2>&1 || true
 trap cleanup EXIT # set before `new`, so a half-created session is also released
 log "creating session $SESSION on $GPU (run $RUN_ID)"
-timeout 600 colab new -s "$SESSION" --gpu "$GPU" </dev/null
+# Colab answers 503 "Service Unavailable" when it has no free GPU of that type; that is
+# transient, so retry. Nothing is billed until an assignment succeeds.
+for attempt in $(seq 1 "$NEW_RETRIES"); do
+  timeout 600 colab new -s "$SESSION" --gpu "$GPU" </dev/null >"$OUT/new.log" 2>&1 && break
+  log "colab new failed (attempt $attempt/$NEW_RETRIES): $(grep -o 'Service Unavailable\|[A-Za-z]*Error[^│]*' "$OUT/new.log" | tail -1)"
+  ((attempt < NEW_RETRIES)) || { log "no $GPU available; giving up"; exit 1; }
+  sleep 120
+done
 # The CU/hour rate is only visible while the VM is assigned, so record it now.
 timeout 60 colab usage </dev/null >"$OUT/usage-during.txt" 2>&1 || true
 log "$(grep -i 'rate' "$OUT/usage-during.txt" || echo 'usage rate unknown') on $GPU"
