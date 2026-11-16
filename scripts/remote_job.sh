@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs ON the Colab VM, from /content/app, launched in the background by colab_train.sh.
-# Usage: remote_job.sh smoke|baseline|full RUN_DIR CONFIG
+# Usage: remote_job.sh smoke|baseline|full|demo RUN_DIR CONFIG
 set -euo pipefail
 
 MODE=$1
@@ -33,6 +33,29 @@ case "$MODE" in
   full)
     python -m invoice_vlm.train --config "$CONFIG" --output-dir "$RUN/model"
     python -m invoice_vlm.evaluate --config "$CONFIG" --adapter "$RUN/model" --out "$RUN"
+    ;;
+  demo)
+    # The published adapter used the way a reader of the README would: Hub repo id + image file.
+    ADAPTER=$(python -c 'import sys; from invoice_vlm.config import load_config; print(load_config(sys.argv[1])["hub"]["model_id"])' "$CONFIG")
+    python - "$RUN" <<'PY'
+import json, sys
+from invoice_vlm.data import load_split
+run = sys.argv[1]
+for row in load_split("test", limit=1):  # first test document of each source
+    row["image"].convert("RGB").save(f"{run}/{row['doc_type']}.png")
+    with open(f"{run}/{row['doc_type']}.gold.json", "w", encoding="utf-8") as f:
+        json.dump(json.loads(row["target"]), f, ensure_ascii=False, indent=2)
+PY
+    for t in receipt invoice; do
+      echo "[demo] $t: gold label"
+      cat "$RUN/$t.gold.json"
+      echo
+      echo "[demo] $t: model output (adapter $ADAPTER)"
+      start=$SECONDS
+      python -m invoice_vlm.infer --config "$CONFIG" --adapter "$ADAPTER" --type "$t" "$RUN/$t.png" \
+        | tee "$RUN/$t.pred.json"
+      echo "[demo] $t: $((SECONDS - start)) s including model load"
+    done
     ;;
   *)
     echo "unknown mode: $MODE" >&2

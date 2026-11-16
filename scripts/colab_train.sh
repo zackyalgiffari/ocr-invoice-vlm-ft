@@ -4,14 +4,15 @@
 #   scripts/colab_train.sh smoke      # ~10 steps on 32 examples: checks versions, VRAM, adapter reload
 #   scripts/colab_train.sh baseline   # zero-shot base model on the test split
 #   scripts/colab_train.sh full       # full LoRA training + test evaluation, adapter pushed to the HF Hub
+#   scripts/colab_train.sh demo       # infer.py with the adapter from the Hub on one receipt + one invoice
 #
 # Env: GPU (default L4), CONFIG, POLL (seconds between status checks, default 60),
 #      MAX_HOURS (default 4).
 # The VM runs the committed HEAD (git archive), so commit before running.
 set -euo pipefail
 
-MODE=${1:?usage: colab_train.sh smoke|baseline|full}
-case "$MODE" in smoke | baseline | full) ;; *) echo "unknown mode: $MODE" >&2; exit 2 ;; esac
+MODE=${1:?usage: colab_train.sh smoke|baseline|full|demo}
+case "$MODE" in smoke | baseline | full | demo) ;; *) echo "unknown mode: $MODE" >&2; exit 2 ;; esac
 GPU=${GPU:-L4}
 CONFIG=${CONFIG:-configs/qwen35_2b_lora.yaml}
 POLL=${POLL:-60}
