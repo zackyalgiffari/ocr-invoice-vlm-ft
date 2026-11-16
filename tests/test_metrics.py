@@ -72,3 +72,17 @@ def test_invalid_json_counts_as_zero_recall_and_per_source_split():
     assert result["overall"]["json_valid"] == 0.5
     assert result["cord"]["recall"] == 0.0
     assert result["invoices"]["f1"] == 1.0
+
+
+def test_lenient_forgives_label_whitespace_and_single_item_object():
+    gold = {"menu": {"nm": "Es Teh", "price": "5,000"}, "total": {"total_price": "$ 1 490,55"}}
+    pred = '{"menu": [{"nm": "Es Teh", "price": "5,000"}], "total": {"total_price": "$1490,55"}}'
+    s = score([("cord", pred, gold)])["overall"]
+    assert s["f1"] == 0.0 and s["exact_match"] == 0.0
+    assert s["lenient_f1"] == 1.0 and s["lenient_exact_match"] == 1.0
+
+
+def test_lenient_still_penalizes_wrong_values():
+    pred = '{"menu": [{"nm": "Es Teh", "price": "5,000"}, {"nm": "Nasi Goreng", "price": "25,000"}], "total": {"total_price": "31,000"}}'
+    s = score([("cord", pred, GOLD)])["overall"]
+    assert s["lenient_f1"] == pytest.approx(0.8) and s["lenient_exact_match"] == 0.0

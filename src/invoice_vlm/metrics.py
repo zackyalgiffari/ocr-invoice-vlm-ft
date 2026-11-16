@@ -8,6 +8,11 @@ and a duplicated item counts twice.
 reads the document correctly but invents its own key names, which scores 0 on field F1;
 the gap between the two numbers is "can read" vs "follows the schema".
 
+``lenient_f1`` / ``lenient_exact_match`` forgive two label artifacts that are not reading
+errors: whitespace inside a value (the invoice labels write "$ 978,12" and "1 490,55"; the
+fine-tuned model writes "$978,12" and "1490,55") and a single line item stored as an object
+instead of a one-element list (CORD's "menu": {...} vs [{...}]). The strict scores stay the headline.
+
 Re-score saved predictions without a GPU:  python -m invoice_vlm.metrics predictions.jsonl
 """
 
@@ -70,6 +75,8 @@ class Scores:
     n_pred: int = 0
     n_gold: int = 0
     value_tp: int = 0
+    lenient_tp: int = 0
+    lenient_exact_match: int = 0
     by_source: dict[str, Scores] = field(default_factory=dict)
 
     def add(self, pred: Any | None, gold: Any) -> None:
@@ -84,10 +91,14 @@ class Scores:
         self.tp += sum((p & g).values())
         self.value_tp += sum((_values(p) & _values(g)).values())
         self.exact_match += int(p == g)
+        lp, lg = _lenient(p), _lenient(g)
+        self.lenient_tp += sum((lp & lg).values())
+        self.lenient_exact_match += int(lp == lg)
 
     def summary(self) -> dict[str, float]:
         precision, recall, f1 = _prf(self.tp, self.n_pred, self.n_gold)
         _, _, value_f1 = _prf(self.value_tp, self.n_pred, self.n_gold)
+        _, _, lenient_f1 = _prf(self.lenient_tp, self.n_pred, self.n_gold)
         return {
             "n": self.n,
             "json_valid": self.valid_json / self.n if self.n else 0.0,
@@ -96,6 +107,8 @@ class Scores:
             "recall": recall,
             "f1": f1,
             "value_f1": value_f1,
+            "lenient_f1": lenient_f1,
+            "lenient_exact_match": self.lenient_exact_match / self.n if self.n else 0.0,
         }
 
 
@@ -103,6 +116,14 @@ def _values(flat: Counter[tuple[str, str]]) -> Counter[str]:
     out: Counter[str] = Counter()
     for (_, value), count in flat.items():
         out[value] += count
+    return out
+
+
+def _lenient(flat: Counter[tuple[str, str]]) -> Counter[tuple[str, str]]:
+    """Drop list markers from paths and all whitespace from values (same leaf count)."""
+    out: Counter[tuple[str, str]] = Counter()
+    for (path, value), count in flat.items():
+        out[(path.replace("[]", ""), "".join(value.split()))] += count
     return out
 
 

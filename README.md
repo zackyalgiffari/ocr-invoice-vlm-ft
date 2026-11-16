@@ -19,7 +19,8 @@ receipts (image → JSON). Training runs on a Google Colab GPU, driven from the 
 - **Checkpoints** are pushed to the private HF repo every epoch (`hub_strategy="checkpoint"`),
   so a dropped Colab VM loses at most one epoch.
 - **Metrics** (`src/invoice_vlm/metrics.py`): JSON validity, field-level precision/recall/F1 over
-  `(path, value)` leaves with list order ignored, and per-document exact match.
+  `(path, value)` leaves with list order ignored, per-document exact match, value-only F1, and a
+  lenient F1 that forgives label whitespace.
 
 ## Layout
 
@@ -30,7 +31,7 @@ src/invoice_vlm/
   train.py       LoRA SFT with transformers Trainer + PEFT
   evaluate.py    test-split generation -> predictions.jsonl, metrics.json
   infer.py       one image -> JSON
-  metrics.py     scoring
+  metrics.py     scoring (strict, value-only and lenient F1); rescore: python -m invoice_vlm.metrics predictions.jsonl
 scripts/
   colab_train.sh   local: new VM -> upload HEAD -> install -> run in background -> poll -> download -> stop
   remote_job.sh    on the VM: smoke | baseline | full
@@ -65,12 +66,22 @@ Test split: 126 documents (100 CORD receipts, 26 invoices), Colab L4. *Value F1*
 alone, ignoring keys, so it shows how much a zero-shot model reads even when it invents its own
 key names (which makes its Field F1 zero).
 
-| Model | Split | JSON valid | Field F1 | Value F1 | Exact match |
-|---|---|---|---|---|---|
-| Qwen3.5-2B zero-shot | test | 97.6% | 0.000 | 0.470 | 0.0% |
-| Qwen3.5-2B + LoRA | test | 100% | 0.885 | 0.916 | 38.9% |
+| Model | Split | JSON valid | Field F1 | Value F1 | Exact match | Lenient F1 | Lenient EM |
+|---|---|---|---|---|---|---|---|
+| Qwen3.5-2B zero-shot | test | 97.6% | 0.000 | 0.470 | 0.0% | 0.000 | 0.0% |
+| Qwen3.5-2B + LoRA | test | 100% | 0.885 | 0.916 | 38.9% | 0.918 | 46.8% |
 
-Per source after LoRA: CORD receipts Field F1 0.864 (exact match 47%), invoices Field F1 0.916
-(exact match 7.7%: invoices have many line items, so one wrong field breaks the whole document).
+*Lenient* ignores whitespace inside values and object-vs-one-item-list, two label artifacts rather
+than reading errors (the invoice labels write `$ 978,12` / `1 490,55`; the model writes `$978,12` /
+`1490,55`). Per source after LoRA:
+
+| Source | n | Field F1 | Exact match | Lenient F1 | Lenient EM |
+|---|---|---|---|---|---|
+| CORD receipts | 100 | 0.864 | 47.0% | 0.887 | 51.0% |
+| Invoices | 26 | 0.916 | 7.7% | 0.964 | 30.8% |
+
+The remaining misses concentrate in CORD item names (`menu[].nm`), unit prices and counts, and in
+invoice item descriptions, IBANs (often one dropped or swapped character) and totals.
+
 Training: 3 epochs, 462 steps in 2.5 h on L4 (~20 s/step), validation loss 0.039 → 0.033 → 0.033,
 peak GPU memory 11.7 / 22 GiB; test evaluation 8.5 min. The whole run cost about 6 compute units.
