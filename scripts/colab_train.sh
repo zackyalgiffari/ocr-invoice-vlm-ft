@@ -5,14 +5,15 @@
 #   scripts/colab_train.sh baseline   # zero-shot base model on the test split
 #   scripts/colab_train.sh full       # full LoRA training + test evaluation, adapter pushed to the HF Hub
 #   scripts/colab_train.sh demo       # infer.py with the adapter from the Hub on one receipt + one invoice
+#   scripts/colab_train.sh hubeval    # test split at batch 1: zero-shot base and the Hub adapter
 #
 # Env: GPU (default L4), CONFIG, POLL (seconds between status checks, default 60),
 #      MAX_HOURS (default 4), FAST_KERNELS (1 = install flash-linear-attention + causal-conv1d).
 # The VM runs the committed HEAD (git archive), so commit before running.
 set -euo pipefail
 
-MODE=${1:?usage: colab_train.sh smoke|baseline|full|demo}
-case "$MODE" in smoke | baseline | full | demo) ;; *) echo "unknown mode: $MODE" >&2; exit 2 ;; esac
+MODE=${1:?usage: colab_train.sh smoke|baseline|full|demo|hubeval}
+case "$MODE" in smoke | baseline | full | demo | hubeval) ;; *) echo "unknown mode: $MODE" >&2; exit 2 ;; esac
 GPU=${GPU:-L4}
 CONFIG=${CONFIG:-configs/qwen35_2b_lora.yaml}
 POLL=${POLL:-60}
@@ -120,10 +121,14 @@ while [[ -z "$EXIT_CODE" ]]; do
 done
 log "remote job finished with exit code $EXIT_CODE"
 
-for f in run.log run/metrics.json run/predictions.jsonl; do
-  timeout 300 colab download -s "$SESSION" "/content/$f" "$OUT/$(basename "$f")" \
+FILES="run.log run/metrics.json run/predictions.jsonl"
+[[ "$MODE" == hubeval ]] && FILES="run.log run/base/metrics.json run/base/predictions.jsonl run/lora/metrics.json run/lora/predictions.jsonl"
+for f in $FILES; do
+  dest="$OUT/${f#run/}" # keeps base/ and lora/ apart
+  mkdir -p "$(dirname "$dest")"
+  timeout 300 colab download -s "$SESSION" "/content/$f" "$dest" \
     </dev/null >/dev/null 2>&1 || log "not downloaded: /content/$f"
 done
-[[ -f "$OUT/metrics.json" ]] && cat "$OUT/metrics.json"
+for m in "$OUT"/metrics.json "$OUT"/*/metrics.json; do [[ -f "$m" ]] && cat "$m"; done
 log "artifacts in $OUT"
 exit "$EXIT_CODE"

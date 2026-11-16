@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs ON the Colab VM, from /content/app, launched in the background by colab_train.sh.
-# Usage: remote_job.sh smoke|baseline|full|demo RUN_DIR CONFIG
+# Usage: remote_job.sh smoke|baseline|full|demo|hubeval RUN_DIR CONFIG
 set -euo pipefail
 
 MODE=$1
@@ -43,6 +43,14 @@ case "$MODE" in
   full)
     python -m invoice_vlm.train --config "$CONFIG" --output-dir "$RUN/model"
     python -m invoice_vlm.evaluate --config "$CONFIG" --adapter "$RUN/model" --out "$RUN"
+    ;;
+  hubeval)
+    # Publishable numbers: the adapter as published on the Hub, and the zero-shot base, both at
+    # batch 1. Batched generation left-pads, and Qwen3.5's recurrent linear-attention/conv layers
+    # may let those pad tokens leak into the state, so batch 1 is the reference setting.
+    ADAPTER=$(python -c 'import sys; from invoice_vlm.config import load_config; print(load_config(sys.argv[1])["hub"]["model_id"])' "$CONFIG")
+    python -m invoice_vlm.evaluate --config "$CONFIG" --batch-size 1 --out "$RUN/base"
+    python -m invoice_vlm.evaluate --config "$CONFIG" --batch-size 1 --adapter "$ADAPTER" --out "$RUN/lora"
     ;;
   demo)
     # The published adapter used the way a reader of the README would: Hub repo id + image file.

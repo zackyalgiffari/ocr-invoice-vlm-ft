@@ -27,6 +27,7 @@ def main() -> None:
     p.add_argument("--model-id", help="override config model_id")
     p.add_argument("--split", default="test")
     p.add_argument("--limit", type=int, help="cap examples per source")
+    p.add_argument("--batch-size", type=int, help="override config eval.batch_size")
     args = p.parse_args()
 
     cfg = load_config(args.config)
@@ -37,7 +38,7 @@ def main() -> None:
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    bs = cfg["eval"]["batch_size"]
+    bs = args.batch_size or cfg["eval"]["batch_size"]
     rows = []
     started = time.time()
     with open(out_dir / "predictions.jsonl", "w", encoding="utf-8") as f:
@@ -62,6 +63,7 @@ def main() -> None:
         "model_id": args.model_id or cfg["model_id"],
         "adapter": args.adapter,
         "split": args.split,
+        "batch_size": bs,
         "seconds": round(time.time() - started, 1),
         "scores": score(rows),
     }
