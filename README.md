@@ -34,7 +34,8 @@ src/invoice_vlm/
   metrics.py     scoring (strict, value-only and lenient F1); rescore: python -m invoice_vlm.metrics predictions.jsonl
 scripts/
   colab_train.sh   local: new VM -> upload HEAD -> install -> run in background -> poll -> download -> stop
-  remote_job.sh    on the VM: smoke | baseline | full
+  remote_job.sh    on the VM: smoke | baseline | full | demo
+docs/model_card.md  source of the HF repo's README (upload: hf upload <repo> docs/model_card.md README.md)
 tests/            CPU unit tests (no model download)
 ```
 
@@ -51,7 +52,16 @@ uvx --with pillow --with pyyaml pytest -q -p no:cacheprovider
 scripts/colab_train.sh smoke      # 10 steps on 32 examples: versions, VRAM, adapter reload
 scripts/colab_train.sh baseline   # zero-shot base model on the test split
 scripts/colab_train.sh full       # 3 epochs + test evaluation, adapter pushed to HF
+scripts/colab_train.sh demo       # infer.py with the Hub adapter on one test receipt + invoice
+
+# One image, on any machine with a GPU and the package installed:
+python -m invoice_vlm.infer --config configs/qwen35_2b_lora.yaml \
+  --adapter zackyalgiffari/qwen3.5-2b-invoice-extract --type receipt struk.jpg
 ```
+
+On an L4, the demo takes 52 s for the first image (base model download and load, adapter merge)
+and 27 s for the next one, including model load. The demo prints each prediction next to its gold
+label in `run.log`.
 
 Results land in `outputs/<mode>-<time>-<commit>/` (gitignored): `run.log`, `metrics.json`,
 `predictions.jsonl`, and compute-unit balance before/after.
