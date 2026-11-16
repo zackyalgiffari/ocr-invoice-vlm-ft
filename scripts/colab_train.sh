@@ -58,6 +58,9 @@ r = subprocess.run(
     "set -e; mkdir -p /content/app && tar -xzf /content/src.tar.gz -C /content/app"
     " && chmod 600 /content/.hf_token"
     " && pip install -q -r /content/app/requirements-colab.txt"
+    # Colab ships torchao 0.10; peft >= 0.21 refuses to wrap a model while an old torchao is
+    # importable. Nothing here quantizes, so remove it rather than chase a torch-matched build.
+    " && pip uninstall -y -q torchao"
     " && pip install -q --no-deps -e /content/app",
     shell=True, capture_output=True, text=True,
 )
