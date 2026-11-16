@@ -15,6 +15,33 @@ tags:
 - information-extraction
 - receipts
 - invoices
+model-index:
+- name: qwen3.5-2b-receipt-invoice-extract-lora
+  results:
+  - task:
+      type: image-text-to-text
+      name: Receipt field extraction (image to JSON)
+    dataset:
+      type: naver-clova-ix/cord-v2
+      name: CORD v2
+      split: test
+    metrics:
+    - {type: f1, value: 0.869, name: Field F1}
+    - {type: f1, value: 0.892, name: Lenient field F1}
+    - {type: exact_match, value: 0.48, name: Document exact match}
+    - {type: accuracy, value: 1.0, name: Valid JSON rate}
+  - task:
+      type: image-text-to-text
+      name: Invoice field extraction (image to JSON)
+    dataset:
+      type: katanaml-org/invoices-donut-data-v1
+      name: invoices-donut-data-v1
+      split: test
+    metrics:
+    - {type: f1, value: 0.910, name: Field F1}
+    - {type: f1, value: 0.964, name: Lenient field F1}
+    - {type: exact_match, value: 0.038, name: Document exact match}
+    - {type: accuracy, value: 1.0, name: Valid JSON rate}
 ---
 
 # qwen3.5-2b-receipt-invoice-extract-lora
@@ -23,22 +50,22 @@ A LoRA adapter for [Qwen/Qwen3.5-2B](https://huggingface.co/Qwen/Qwen3.5-2B) tha
 a receipt or an invoice and returns its fields as one JSON object. The output follows the Donut label
 schema of the two training datasets.
 
-Training code, evaluation and the run logs are in the GitHub repo `zackyalgiffari/ocr-invoice-vlm-ft`.
+Training, evaluation and Colab scripts: [github.com/zackyalgiffari/ocr-invoice-vlm-ft](https://github.com/zackyalgiffari/ocr-invoice-vlm-ft).
 
 ## Results
 
-Test split: 126 documents (100 CORD receipts, 26 invoices). Greedy decoding, images capped at
-1280×1280 px.
+Test split: 126 documents (100 CORD receipts, 26 invoices). Evaluated with this adapter loaded
+from the Hub, greedy decoding, batch 1, and images capped at 1280×1280 px.
 
 | Model | JSON valid | Field F1 | Value F1 | Exact match | Lenient F1 | Lenient EM |
 |---|---|---|---|---|---|---|
-| Qwen3.5-2B zero-shot | 97.6% | 0.000 | 0.470 | 0.0% | 0.000 | 0.0% |
-| **+ this adapter** | **100%** | **0.885** | **0.916** | **38.9%** | **0.918** | **46.8%** |
+| Qwen3.5-2B zero-shot | 96.8% | 0.000 | 0.462 | 0.0% | 0.000 | 0.0% |
+| **+ this adapter** | **100%** | **0.886** | **0.916** | **38.9%** | **0.921** | **48.4%** |
 
 | Source | n | Field F1 | Exact match | Lenient F1 | Lenient EM |
 |---|---|---|---|---|---|
-| CORD receipts | 100 | 0.864 | 47.0% | 0.887 | 51.0% |
-| Invoices | 26 | 0.916 | 7.7% | 0.964 | 30.8% |
+| CORD receipts | 100 | 0.869 | 48.0% | 0.892 | 52.0% |
+| Invoices | 26 | 0.910 | 3.8% | 0.964 | 34.6% |
 
 - **Field F1**: precision/recall over `(path, value)` leaves, with list order ignored, after
   lower-casing and collapsing whitespace.
@@ -52,7 +79,7 @@ Test split: 126 documents (100 CORD receipts, 26 invoices). Greedy decoding, ima
 ## Usage
 
 The prompt must match training. The only difference between the two document types is one word
-(`receipt` / `invoice`).
+(`receipt` / `invoice`). Tested with transformers 5.23.0, peft 0.21.2, and torch 2.14.1 on an L4 (24 GB).
 
 ```python
 import json, torch
@@ -108,6 +135,8 @@ With the GitHub repo installed, the equivalent command is
   `total.total_price`, ...) and the invoice dataset's keys (`header`, `items[]`, `summary`). Expect
   those keys, not a general invoice schema. Other layouts and languages are untested.
 - **Small invoice set.** The invoice test split has only 26 documents, so its scores are noisy.
+  For example, invoice exact match is 3.8% at batch 1 and 7.7% at batch 4, a difference of one
+  document.
 - **Single characters slip.** Remaining errors include dropped or swapped characters in long codes
   (IBANs), item names, and totals. Check amounts before using them for anything that matters.
 
@@ -115,4 +144,19 @@ With the GitHub repo installed, the equivalent command is
 
 The adapter is Apache-2.0, like the base model. The training data is
 [CORD v2](https://huggingface.co/datasets/naver-clova-ix/cord-v2) (CC-BY-4.0) and
-[invoices-donut-data-v1](https://huggingface.co/datasets/katanaml-org/invoices-donut-data-v1) (MIT).
+[invoices-donut-data-v1](https://huggingface.co/datasets/katanaml-org/invoices-donut-data-v1) (MIT,
+by Katana ML).
+
+## Citation
+
+If you use this adapter, please cite the CORD dataset it was trained on:
+
+```bibtex
+@inproceedings{park2019cord,
+  title     = {CORD: A Consolidated Receipt Dataset for Post-OCR Parsing},
+  author    = {Park, Seunghyun and Shin, Seung and Lee, Bado and Lee, Junyeop and Surh, Jaeheung
+               and Seo, Minjoon and Lee, Hwalsuk},
+  booktitle = {Workshop on Document Intelligence at NeurIPS 2019},
+  year      = {2019}
+}
+```

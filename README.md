@@ -80,14 +80,15 @@ token is uploaded as a file and read through `HF_TOKEN_PATH`, so it never appear
 
 ## Results
 
-Test split: 126 documents (100 CORD receipts, 26 invoices), Colab L4. *Value F1* scores values
-alone, ignoring keys, so it shows how much a zero-shot model reads even when it invents its own
-key names (which makes its Field F1 zero).
+Test split: 126 documents (100 CORD receipts, 26 invoices), Colab L4, greedy decoding, batch 1
+(`scripts/colab_train.sh hubeval`, which evaluates the adapter as published on the Hub). *Value F1*
+scores values alone, ignoring keys, so it shows how much a zero-shot model reads even when it
+invents its own key names (which makes its Field F1 zero).
 
 | Model | Split | JSON valid | Field F1 | Value F1 | Exact match | Lenient F1 | Lenient EM |
 |---|---|---|---|---|---|---|---|
-| Qwen3.5-2B zero-shot | test | 97.6% | 0.000 | 0.470 | 0.0% | 0.000 | 0.0% |
-| Qwen3.5-2B + LoRA | test | 100% | 0.885 | 0.916 | 38.9% | 0.918 | 46.8% |
+| Qwen3.5-2B zero-shot | test | 96.8% | 0.000 | 0.462 | 0.0% | 0.000 | 0.0% |
+| Qwen3.5-2B + LoRA | test | 100% | 0.886 | 0.916 | 38.9% | 0.921 | 48.4% |
 
 *Lenient* ignores whitespace inside values and object-vs-one-item-list, two label artifacts rather
 than reading errors (the invoice labels write `$ 978,12` / `1 490,55`; the model writes `$978,12` /
@@ -95,11 +96,17 @@ than reading errors (the invoice labels write `$ 978,12` / `1 490,55`; the model
 
 | Source | n | Field F1 | Exact match | Lenient F1 | Lenient EM |
 |---|---|---|---|---|---|
-| CORD receipts | 100 | 0.864 | 47.0% | 0.887 | 51.0% |
-| Invoices | 26 | 0.916 | 7.7% | 0.964 | 30.8% |
+| CORD receipts | 100 | 0.869 | 48.0% | 0.892 | 52.0% |
+| Invoices | 26 | 0.910 | 3.8% | 0.964 | 34.6% |
 
 The remaining misses concentrate in CORD item names (`menu[].nm`), unit prices and counts, and in
 invoice item descriptions, IBANs (often one dropped or swapped character) and totals.
 
+**Batch size.** Batched generation (the configs use `eval.batch_size: 4`, left-padded) changes
+16 of 126 outputs relative to batch 1, but the aggregate scores barely move. For the LoRA model:
+Field F1 0.885 vs 0.886, Lenient F1 0.918 vs 0.921. For zero-shot: Value F1 0.470 vs 0.462.
+Batch 4 takes 8.5 minutes for the LoRA test set and batch 1 takes 20, so the configs keep 4 and
+the published numbers use 1.
+
 Training: 3 epochs, 462 steps in 2.5 h on L4 (~20 s/step), validation loss 0.039 → 0.033 → 0.033,
-peak GPU memory 11.7 / 22 GiB; test evaluation 8.5 min. The whole run cost about 6 compute units.
+peak GPU memory 11.7 / 22 GiB. The full run cost about 6 compute units.
