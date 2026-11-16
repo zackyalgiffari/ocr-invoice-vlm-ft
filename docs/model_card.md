@@ -17,7 +17,7 @@ tags:
 - invoices
 ---
 
-# qwen3.5-2b-invoice-extract
+# qwen3.5-2b-receipt-invoice-extract-lora
 
 A LoRA adapter for [Qwen/Qwen3.5-2B](https://huggingface.co/Qwen/Qwen3.5-2B) that reads an image of
 a receipt or an invoice and returns its fields as one JSON object. The output follows the Donut label
@@ -62,7 +62,7 @@ from transformers import AutoModelForImageTextToText, AutoProcessor
 
 base = "Qwen/Qwen3.5-2B"
 model = AutoModelForImageTextToText.from_pretrained(base, dtype=torch.bfloat16, device_map="auto")
-model = PeftModel.from_pretrained(model, "zackyalgiffari/qwen3.5-2b-invoice-extract").merge_and_unload()
+model = PeftModel.from_pretrained(model, "zackyalgiffari/qwen3.5-2b-receipt-invoice-extract-lora").merge_and_unload()
 processor = AutoProcessor.from_pretrained(base)
 
 image = Image.open("receipt.jpg").convert("RGB")
@@ -84,7 +84,7 @@ print(json.loads(processor.decode(out[0, inputs["input_ids"].shape[1]:], skip_sp
 ```
 
 With the GitHub repo installed, the equivalent command is
-`python -m invoice_vlm.infer --config configs/qwen35_2b_lora.yaml --adapter zackyalgiffari/qwen3.5-2b-invoice-extract --type receipt receipt.jpg`.
+`python -m invoice_vlm.infer --config configs/qwen35_2b_lora.yaml --adapter zackyalgiffari/qwen3.5-2b-receipt-invoice-extract-lora --type receipt receipt.jpg`.
 
 ## Training
 

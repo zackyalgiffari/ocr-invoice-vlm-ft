@@ -8,7 +8,7 @@ receipts (image → JSON). Training runs on a Google Colab GPU, driven from the 
 | Base model | [`Qwen/Qwen3.5-2B`](https://huggingface.co/Qwen/Qwen3.5-2B) (Apache-2.0), LoRA on the language model |
 | Data | [`naver-clova-ix/cord-v2`](https://huggingface.co/datasets/naver-clova-ix/cord-v2) (Indonesian receipts, CC-BY-4.0, 800/100/100) + [`katanaml-org/invoices-donut-data-v1`](https://huggingface.co/datasets/katanaml-org/invoices-donut-data-v1) (invoices, MIT, 425/50/26) |
 | Compute | Colab L4 24 GB (bf16) via `colab` CLI |
-| Weights | Private HF model repo `zackyalgiffari/qwen3.5-2b-invoice-extract` |
+| Weights | Private HF model repo `zackyalgiffari/qwen3.5-2b-receipt-invoice-extract-lora` |
 
 ## How it works
 
@@ -56,7 +56,7 @@ scripts/colab_train.sh demo       # infer.py with the Hub adapter on one test re
 
 # One image, on any machine with a GPU and the package installed:
 python -m invoice_vlm.infer --config configs/qwen35_2b_lora.yaml \
-  --adapter zackyalgiffari/qwen3.5-2b-invoice-extract --type receipt struk.jpg
+  --adapter zackyalgiffari/qwen3.5-2b-receipt-invoice-extract-lora --type receipt struk.jpg
 ```
 
 On an L4, the demo takes 52 s for the first image (base model download and load, adapter merge)

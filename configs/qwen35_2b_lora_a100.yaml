@@ -26,7 +26,7 @@ train:
   seed: 42
 
 hub:
-  model_id: zackyalgiffari/qwen3.5-2b-invoice-extract
+  model_id: zackyalgiffari/qwen3.5-2b-receipt-invoice-extract-lora
   private: true
 
 eval:

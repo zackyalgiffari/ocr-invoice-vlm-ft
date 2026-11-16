@@ -1,7 +1,7 @@
 """Extract fields from one invoice/receipt image and print JSON.
 
     python -m invoice_vlm.infer --config configs/qwen35_2b_lora.yaml \
-        --adapter zackyalgiffari/qwen3.5-2b-invoice-extract --type receipt struk.jpg
+        --adapter zackyalgiffari/qwen3.5-2b-receipt-invoice-extract-lora --type receipt struk.jpg
 """
 
 from __future__ import annotations
