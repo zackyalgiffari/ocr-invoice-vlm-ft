@@ -66,6 +66,12 @@ label in `run.log`.
 Results land in `outputs/<mode>-<time>-<commit>/` (gitignored): `run.log`, `metrics.json`,
 `predictions.jsonl`, and compute-unit balance before/after.
 
+`FAST_KERNELS=1` installs `flash-linear-attention` and compiles `causal-conv1d`, which removes the
+"falling back to reference PyTorch" warnings for Qwen3.5's linear-attention layers. Measured with
+smoke on an L4 (2026-11-17), it is not worth it, so it is off by default. Training was 4% faster
+(225 s vs 235 s for 10 steps), evaluation was no faster, and scores were identical, but the compile
+adds about 17 minutes of setup. Over a full run that is about 6 minutes saved for 17 spent.
+
 The VM runs the **committed** `HEAD` (via `git archive`), so commit before launching. The HF
 token is uploaded as a file and read through `HF_TOKEN_PATH`, so it never appears in
 `colab exec --env` arguments or in the CLI's session history.
