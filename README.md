@@ -8,7 +8,8 @@ receipts (image → JSON). Training runs on a Google Colab GPU, driven from the 
 | Base model | [`Qwen/Qwen3.5-2B`](https://huggingface.co/Qwen/Qwen3.5-2B) (Apache-2.0), LoRA on the language model |
 | Data | [`naver-clova-ix/cord-v2`](https://huggingface.co/datasets/naver-clova-ix/cord-v2) (Indonesian receipts, CC-BY-4.0, 800/100/100) + [`katanaml-org/invoices-donut-data-v1`](https://huggingface.co/datasets/katanaml-org/invoices-donut-data-v1) (invoices, MIT, 425/50/26) |
 | Compute | Colab L4 24 GB (bf16) via `colab` CLI |
-| Weights | Private HF model repo `zackyalgiffari/qwen3.5-2b-receipt-invoice-extract-lora` |
+| Weights | [`zackyalgiffari/qwen3.5-2b-receipt-invoice-extract-lora`](https://huggingface.co/zackyalgiffari/qwen3.5-2b-receipt-invoice-extract-lora) (LoRA adapter, Apache-2.0) |
+| License | Code and adapter: Apache-2.0 ([LICENSE](LICENSE)) |
 
 ## How it works
 
@@ -16,7 +17,7 @@ receipts (image → JSON). Training runs on a Google Colab GPU, driven from the 
   both schemas; the instruction says whether the image is a receipt or an invoice.
 - **Loss** only on the assistant answer (JSON + `<|im_end|>`), never on the prompt or image tokens.
 - **Images** are downscaled to at most `max_pixels` (Qwen3.5: one visual token per 32×32 px).
-- **Checkpoints** are pushed to the private HF repo every epoch (`hub_strategy="checkpoint"`),
+- **Checkpoints** are pushed to the HF repo every epoch (`hub_strategy="checkpoint"`),
   so a dropped Colab VM loses at most one epoch.
 - **Metrics** (`src/invoice_vlm/metrics.py`): JSON validity, field-level precision/recall/F1 over
   `(path, value)` leaves with list order ignored, per-document exact match, value-only F1, and a
@@ -34,7 +35,7 @@ src/invoice_vlm/
   metrics.py     scoring (strict, value-only and lenient F1); rescore: python -m invoice_vlm.metrics predictions.jsonl
 scripts/
   colab_train.sh   local: new VM -> upload HEAD -> install -> run in background -> poll -> download -> stop
-  remote_job.sh    on the VM: smoke | baseline | full | demo
+  remote_job.sh    on the VM: smoke | baseline | full | demo | hubeval
 docs/model_card.md  source of the HF repo's README (upload: hf upload <repo> docs/model_card.md README.md)
 tests/            CPU unit tests (no model download)
 ```
@@ -45,7 +46,7 @@ Prerequisites: `colab` CLI authenticated (`colab sessions` works) and `hf auth l
 (answer **n** to "add token as git credential").
 
 ```bash
-# Local tests. Runs from the uv cache, so no .venv is created on the slow /mnt/e drive.
+# Local tests (CPU only; no model download).
 uvx --with pillow --with pyyaml pytest -q -p no:cacheprovider
 
 # Colab runs. Each one releases its VM at the end, even on error or Ctrl-C.
@@ -53,6 +54,7 @@ scripts/colab_train.sh smoke      # 10 steps on 32 examples: versions, VRAM, ada
 scripts/colab_train.sh baseline   # zero-shot base model on the test split
 scripts/colab_train.sh full       # 3 epochs + test evaluation, adapter pushed to HF
 scripts/colab_train.sh demo       # infer.py with the Hub adapter on one test receipt + invoice
+scripts/colab_train.sh hubeval    # test split at batch 1: zero-shot and the Hub adapter (published numbers)
 
 # One image, on any machine with a GPU and the package installed:
 python -m invoice_vlm.infer --config configs/qwen35_2b_lora.yaml \
