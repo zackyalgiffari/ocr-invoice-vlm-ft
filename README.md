@@ -61,7 +61,11 @@ token is uploaded as a file and read through `HF_TOKEN_PATH`, so it never appear
 
 ## Results
 
-| Model | Split | JSON valid | Field F1 | Exact match |
-|---|---|---|---|---|
-| Qwen3.5-2B zero-shot | test | – | – | – |
-| Qwen3.5-2B + LoRA | test | – | – | – |
+Test split: 126 documents (100 CORD receipts, 26 invoices), Colab L4. *Value F1* scores values
+alone, ignoring keys, so it shows how much a zero-shot model reads even when it invents its own
+key names (which makes its Field F1 zero).
+
+| Model | Split | JSON valid | Field F1 | Value F1 | Exact match |
+|---|---|---|---|---|---|
+| Qwen3.5-2B zero-shot | test | 97.6% | 0.000 | 0.470 | 0.0% |
+| Qwen3.5-2B + LoRA | test | – | – | – | – |
