@@ -5,7 +5,8 @@
 #   scripts/colab_train.sh baseline   # zero-shot base model on the test split
 #   scripts/colab_train.sh full       # full LoRA training + test evaluation, adapter pushed to the HF Hub
 #
-# Env: GPU (default L4), CONFIG, POLL (seconds between status checks, default 60).
+# Env: GPU (default L4), CONFIG, POLL (seconds between status checks, default 60),
+#      MAX_HOURS (default 4).
 # The VM runs the committed HEAD (git archive), so commit before running.
 set -euo pipefail
 
@@ -14,6 +15,7 @@ case "$MODE" in smoke | baseline | full) ;; *) echo "unknown mode: $MODE" >&2; e
 GPU=${GPU:-L4}
 CONFIG=${CONFIG:-configs/qwen35_2b_lora.yaml}
 POLL=${POLL:-60}
+MAX_HOURS=${MAX_HOURS:-4} # hard wall-clock cap for the remote job; the VM is stopped after it
 
 cd "$(git rev-parse --show-toplevel)"
 if [[ -n "$(git status --porcelain)" ]]; then
@@ -32,55 +34,52 @@ mkdir -p "$OUT" dist
 git archive --format=tar.gz -o dist/src.tar.gz HEAD
 
 log() { printf '[local %s] %s\n' "$(date +%H:%M:%S)" "$*" >&2; }
-# Pipe Python into the session's kernel. --timeout 0: setup/pip can be silent for minutes.
-remote() { colab exec -s "$SESSION" --timeout 0; }
+# Every colab call is wrapped in `timeout`: the CLI can hang when its connection drops.
+# Pipe short Python snippets into the session's kernel (stdin = the snippet).
+remote() { timeout 120 colab exec -s "$SESSION" --timeout 60; }
 
 cleanup() {
   log "stopping session $SESSION"
-  colab stop -s "$SESSION" </dev/null || true
-  colab usage </dev/null >"$OUT/usage-after.txt" 2>&1 || true
+  for _ in 1 2 3; do
+    timeout 180 colab stop -s "$SESSION" </dev/null && break
+    log "colab stop failed or timed out; retrying"
+  done
+  if timeout 60 colab sessions </dev/null 2>&1 | grep -q "\[$SESSION\]"; then
+    log "WARNING: $SESSION is STILL RUNNING and billing. Stop it: colab stop -s $SESSION"
+  fi
+  timeout 60 colab usage </dev/null >"$OUT/usage-after.txt" 2>&1 || true
 }
 
-colab usage </dev/null >"$OUT/usage-before.txt" 2>&1 || true
+timeout 60 colab usage </dev/null >"$OUT/usage-before.txt" 2>&1 || true
 trap cleanup EXIT # set before `new`, so a half-created session is also released
 log "creating session $SESSION on $GPU (run $RUN_ID)"
-colab new -s "$SESSION" --gpu "$GPU" </dev/null
+timeout 600 colab new -s "$SESSION" --gpu "$GPU" </dev/null
 # The CU/hour rate is only visible while the VM is assigned, so record it now.
-colab usage </dev/null >"$OUT/usage-during.txt" 2>&1 || true
+timeout 60 colab usage </dev/null >"$OUT/usage-during.txt" 2>&1 || true
 log "$(grep -i 'rate' "$OUT/usage-during.txt" || echo 'usage rate unknown') on $GPU"
 
-colab upload -s "$SESSION" dist/src.tar.gz /content/src.tar.gz </dev/null
+timeout 300 colab upload -s "$SESSION" dist/src.tar.gz /content/src.tar.gz </dev/null
 # Uploaded as a file and read via HF_TOKEN_PATH, so the token never appears in
 # `colab exec --env` arguments or the CLI's local session history.
-colab upload -s "$SESSION" "$TOKEN_FILE" /content/.hf_token </dev/null
+timeout 120 colab upload -s "$SESSION" "$TOKEN_FILE" /content/.hf_token </dev/null
 
-log "installing dependencies"
-remote <<'PY' | tee "$OUT/setup.log"
-import subprocess
-r = subprocess.run(
-    "set -e; mkdir -p /content/app && tar -xzf /content/src.tar.gz -C /content/app"
-    " && chmod 600 /content/.hf_token"
-    " && pip install -q -r /content/app/requirements-colab.txt"
-    # Colab ships torchao 0.10; peft >= 0.21 refuses to wrap a model while an old torchao is
-    # importable. Nothing here quantizes, so remove it rather than chase a torch-matched build.
-    " && pip uninstall -y -q torchao"
-    " && pip install -q --no-deps -e /content/app",
-    shell=True, capture_output=True, text=True,
-)
-print(r.stdout[-3000:]); print(r.stderr[-3000:])
-print("SETUP_OK" if r.returncode == 0 else f"SETUP_FAILED rc={r.returncode}")
-PY
-grep -q SETUP_OK "$OUT/setup.log" || { log "setup failed, see $OUT/setup.log"; exit 1; }
-
-log "launching $MODE job in the background on the VM"
-remote <<PY
+# Everything slow (pip install, training, evaluation) runs in ONE background process on the
+# VM, started by this short exec. A `colab exec` whose websocket drops can hang forever
+# (seen during a 25-minute foreground pip install), so no long work is done in the foreground.
+log "launching $MODE job (setup + run) in the background on the VM"
+launch=$(remote <<PY 2>&1
 import os, subprocess
 env = dict(os.environ, HF_TOKEN_PATH="/content/.hf_token", PYTHONUNBUFFERED="1",
            TOKENIZERS_PARALLELISM="false")
-cmd = "cd /content/app && bash scripts/remote_job.sh $MODE /content/run $CONFIG > /content/run.log 2>&1; echo \$? > /content/run.exit"
+cmd = ("mkdir -p /content/app && tar -xzf /content/src.tar.gz -C /content/app"
+       " && chmod 600 /content/.hf_token && cd /content/app"
+       " && bash scripts/remote_job.sh $MODE /content/run $CONFIG > /content/run.log 2>&1;"
+       " echo \$? > /content/run.exit")
 subprocess.Popen(["bash", "-c", cmd], env=env, start_new_session=True)
 print("LAUNCHED")
 PY
+) || true
+grep -q LAUNCHED <<<"$launch" || { log "launch failed: ${launch: -300}"; exit 1; }
 
 STATUS_PY='
 import os
@@ -89,23 +88,31 @@ print("\n".join(l[-200:] for l in lines[-3:] if l.strip()))
 print("EXIT=" + open("/content/run.exit").read().strip() if os.path.exists("/content/run.exit") else "RUNNING")
 '
 EXIT_CODE=""
+FAILS=0
+DEADLINE=$((SECONDS + MAX_HOURS * 3600))
 while [[ -z "$EXIT_CODE" ]]; do
   sleep "$POLL"
-  # Hard time limit: a single hung `colab exec` once froze this loop for 50 minutes while the
-  # finished VM sat idle and billing. A timed-out check is simply retried on the next poll.
-  if ! status=$(printf '%s\n' "$STATUS_PY" \
-      | timeout 120 colab exec -s "$SESSION" --timeout 60 2>&1); then
-    log "status check failed (will retry): ${status: -200}"
+  if ((SECONDS > DEADLINE)); then
+    log "job exceeded MAX_HOURS=$MAX_HOURS; giving up (checkpoints already on the Hub survive)"
+    EXIT_CODE=124
+    break
+  fi
+  # remote() is time-limited, so a hung check is just retried on the next poll.
+  if ! status=$(printf '%s\n' "$STATUS_PY" | remote 2>&1); then
+    FAILS=$((FAILS + 1))
+    log "status check failed ($FAILS in a row): ${status: -200}"
+    ((FAILS < 20)) || { log "VM unreachable; giving up"; EXIT_CODE=1; break; }
     continue
   fi
+  FAILS=0
   printf '%s\n' "$status" | grep -v '^EXIT=\|^RUNNING$' | sed 's/^/  vm| /' >&2 || true
   EXIT_CODE=$(printf '%s\n' "$status" | sed -n 's/^EXIT=//p' | tail -1)
 done
 log "remote job finished with exit code $EXIT_CODE"
 
 for f in run.log run/metrics.json run/predictions.jsonl; do
-  colab download -s "$SESSION" "/content/$f" "$OUT/$(basename "$f")" </dev/null >/dev/null 2>&1 \
-    || log "not downloaded: /content/$f"
+  timeout 300 colab download -s "$SESSION" "/content/$f" "$OUT/$(basename "$f")" \
+    </dev/null >/dev/null 2>&1 || log "not downloaded: /content/$f"
 done
 [[ -f "$OUT/metrics.json" ]] && cat "$OUT/metrics.json"
 log "artifacts in $OUT"

@@ -8,6 +8,14 @@ RUN=$2
 CONFIG=$3
 mkdir -p "$RUN"
 
+echo "[setup] installing dependencies"
+pip install -q -r requirements-colab.txt
+# Colab ships torchao 0.10; peft >= 0.21 refuses to wrap a model while an old torchao is
+# importable. Nothing here quantizes, so remove it rather than chase a torch-matched build.
+pip uninstall -y -q torchao
+pip install -q --no-deps -e .
+echo "[setup] done"
+
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
 python -c 'import torch, transformers, peft; print("torch", torch.__version__, "| transformers", transformers.__version__, "| peft", peft.__version__)'
 
