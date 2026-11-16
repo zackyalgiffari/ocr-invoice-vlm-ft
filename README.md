@@ -68,4 +68,9 @@ key names (which makes its Field F1 zero).
 | Model | Split | JSON valid | Field F1 | Value F1 | Exact match |
 |---|---|---|---|---|---|
 | Qwen3.5-2B zero-shot | test | 97.6% | 0.000 | 0.470 | 0.0% |
-| Qwen3.5-2B + LoRA | test | – | – | – | – |
+| Qwen3.5-2B + LoRA | test | 100% | 0.885 | 0.916 | 38.9% |
+
+Per source after LoRA: CORD receipts Field F1 0.864 (exact match 47%), invoices Field F1 0.916
+(exact match 7.7%: invoices have many line items, so one wrong field breaks the whole document).
+Training: 3 epochs, 462 steps in 2.5 h on L4 (~20 s/step), validation loss 0.039 → 0.033 → 0.033,
+peak GPU memory 11.7 / 22 GiB; test evaluation 8.5 min. The whole run cost about 6 compute units.
