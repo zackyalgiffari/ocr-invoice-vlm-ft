@@ -3,6 +3,12 @@
 Fields are compared as a multiset of ``(path, value)`` leaves. List indices are dropped
 from the path (``menu[].nm``), so line items are matched by content regardless of order,
 and a duplicated item counts twice.
+
+``value_f1`` repeats the comparison on values alone, ignoring keys. A zero-shot model
+reads the document correctly but invents its own key names, which scores 0 on field F1;
+the gap between the two numbers is "can read" vs "follows the schema".
+
+Re-score saved predictions without a GPU:  python -m invoice_vlm.metrics predictions.jsonl
 """
 
 from __future__ import annotations
@@ -63,6 +69,7 @@ class Scores:
     tp: int = 0
     n_pred: int = 0
     n_gold: int = 0
+    value_tp: int = 0
     by_source: dict[str, Scores] = field(default_factory=dict)
 
     def add(self, pred: Any | None, gold: Any) -> None:
@@ -75,12 +82,12 @@ class Scores:
         p = flatten(pred)
         self.n_pred += sum(p.values())
         self.tp += sum((p & g).values())
+        self.value_tp += sum((_values(p) & _values(g)).values())
         self.exact_match += int(p == g)
 
     def summary(self) -> dict[str, float]:
-        precision = self.tp / self.n_pred if self.n_pred else 0.0
-        recall = self.tp / self.n_gold if self.n_gold else 0.0
-        f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
+        precision, recall, f1 = _prf(self.tp, self.n_pred, self.n_gold)
+        _, _, value_f1 = _prf(self.value_tp, self.n_pred, self.n_gold)
         return {
             "n": self.n,
             "json_valid": self.valid_json / self.n if self.n else 0.0,
@@ -88,7 +95,22 @@ class Scores:
             "precision": precision,
             "recall": recall,
             "f1": f1,
+            "value_f1": value_f1,
         }
+
+
+def _values(flat: Counter[tuple[str, str]]) -> Counter[str]:
+    out: Counter[str] = Counter()
+    for (_, value), count in flat.items():
+        out[value] += count
+    return out
+
+
+def _prf(tp: int, n_pred: int, n_gold: int) -> tuple[float, float, float]:
+    precision = tp / n_pred if n_pred else 0.0
+    recall = tp / n_gold if n_gold else 0.0
+    f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
+    return precision, recall, f1
 
 
 def score(rows: Iterable[tuple[str, str, Any]]) -> dict[str, dict[str, float]]:
@@ -101,3 +123,19 @@ def score(rows: Iterable[tuple[str, str, Any]]) -> dict[str, dict[str, float]]:
     result = {"overall": overall.summary()}
     result.update({s: sc.summary() for s, sc in sorted(overall.by_source.items())})
     return result
+
+
+def rescore(predictions_path: str) -> dict[str, dict[str, float]]:
+    """Score a predictions.jsonl written by evaluate.py."""
+    rows = []
+    with open(predictions_path, encoding="utf-8") as f:
+        for line in f:
+            r = json.loads(line)
+            rows.append((r["source"], r["output"], json.loads(r["target"])))
+    return score(rows)
+
+
+if __name__ == "__main__":
+    import sys
+
+    print(json.dumps(rescore(sys.argv[1]), indent=2))

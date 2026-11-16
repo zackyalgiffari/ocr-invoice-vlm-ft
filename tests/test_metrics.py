@@ -46,6 +46,27 @@ def test_partial_prediction_precision_recall():
     assert s["exact_match"] == 0.0
 
 
+def test_value_f1_credits_right_values_under_wrong_keys():
+    # What the zero-shot baseline does: correct reading, invented schema.
+    pred = '{"items": [{"name": "Es Teh", "cost": "5,000"}, {"name": "Nasi Goreng", "cost": "25,000"}], "grand_total": "30,000"}'
+    s = score([("cord", pred, GOLD)])["overall"]
+    assert s["f1"] == 0.0
+    assert s["value_f1"] == 1.0
+
+
+def test_rescore_reads_evaluate_output(tmp_path):
+    import json
+
+    path = tmp_path / "predictions.jsonl"
+    path.write_text(
+        json.dumps({"source": "cord", "target": '{"a":"1"}', "output": '{"a": "1"}'}) + "\n",
+        encoding="utf-8",
+    )
+    from invoice_vlm.metrics import rescore
+
+    assert rescore(str(path))["overall"]["f1"] == 1.0
+
+
 def test_invalid_json_counts_as_zero_recall_and_per_source_split():
     result = score([("cord", "garbage", GOLD), ("invoices", '{"a": "1"}', {"a": "1"})])
     assert result["overall"]["json_valid"] == 0.5
